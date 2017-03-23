@@ -37,15 +37,20 @@ MergeRacer = Struct.new(:branch) do
   MAINLINE = "origin/HEAD" # defaultly origin/master
 
   def call
-    if conflicts.none?
+    if dirty?
+      puts "Cowardly refusing to run, please commit your work or update .gitignore"
+      puts "You can figure out what files to modify with\n"
+      puts "  git status"
+    elsif conflicts.none?
       puts "Congratulations! Your branch doesn't conflict with anyone"
     else
       puts "Danger! Merge race in progress"
       conflicts.each do |merge|
         puts "* Conflict: #{branch} with #{merge.branch}, last authored by #{merge.author}"
       end
-      puts "\n"
     end
+
+    puts "\n" # separator
   end
 
   def abort
@@ -54,6 +59,10 @@ MergeRacer = Struct.new(:branch) do
   end
 
   private
+
+  def dirty?
+    query("git status --porcelain").length > 0
+  end
 
   def conflicts
     @conflicts ||= merges.select(&:conflict?)
