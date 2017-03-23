@@ -1,30 +1,44 @@
 #!/usr/bin/env ruby
 
+require 'date'
+
 def query(cmd)
   `#{cmd}`.chomp
 end
 
 def command(cmd)
-  # redirects stdout and stderr to /dev/null
+  # quietly executes, but does tell you the exit status
   system("#{cmd} > /dev/null 2>&1")
 end
 
-class Merge
-  attr_reader :branch, :diff, :author
-
-  def initialize(branch)
-    @branch = branch
-    @diff = conflicts_from(branch)
-    @author = query("git log -n1 --format='%an <%ae>' #{branch}")
+Merge = Struct.new(:branch, :days_till_stale) do
+  def conflict?
+    diff.size > 0
   end
 
-  def conflict?
-    @diff.size > 0
+  def stale?
+    last_touched < stale_cutoff_date
+  end
+
+  def author
+    query("git log -n1 --format='%an <%ae>' #{branch}")
   end
 
   private
 
-  def conflicts_from(branch)
+  def stale_cutoff_date
+    Date.today - days_till_stale
+  end
+
+  def last_touched
+    Date.parse(log_date)
+  end
+
+  def log_date
+    query("git log -1 --date=iso --format=%cd #{branch}")
+  end
+
+  def diff
     # you can't dry run a merge, so we have to apply and abort merges
     command("git merge --no-ff --no-commit #{branch}")
     query("git diff").tap do
@@ -35,22 +49,24 @@ end
 
 MergeRacer = Struct.new(:branch) do
   MAINLINE = "origin/HEAD" # defaultly origin/master
+  STALE_THRESHOLD = 4 * 7 # days
+  SEPARATOR = "\n"
 
   def call
     if dirty?
       puts "Cowardly refusing to run, please commit your work or update .gitignore"
       puts "You can figure out what files to modify with\n"
       puts "  git status"
-    elsif conflicts.none?
+    elsif recent_conflicts.none?
       puts "Congratulations! Your branch doesn't conflict with anyone"
     else
       puts "Danger! Merge race in progress"
-      conflicts.each do |merge|
+      recent_conflicts.each do |merge|
         puts "* Conflict: #{branch} with #{merge.branch}, last authored by #{merge.author}"
       end
     end
 
-    puts "\n" # separator
+    puts SEPARATOR
   end
 
   def abort
@@ -64,18 +80,16 @@ MergeRacer = Struct.new(:branch) do
     query("git status --porcelain").length > 0
   end
 
-  def conflicts
-    @conflicts ||= merges.select(&:conflict?)
+  def recent_conflicts
+    @recent_conflicts ||= merges.reject(&:stale?).select(&:conflict?)
   end
 
   def merges
-    branches_from_merge_base
-      .reject { |b| b.match(MAINLINE) }
-      .map { |b| Merge.new(b) }
+    branches_from_merge_base.map { |branch| Merge.new(branch, STALE_THRESHOLD) }
   end
 
   def branches_from_merge_base
-    query("git branch --remotes --contains #{merge_base}").split("\n").map(&:strip)
+    query("git branch --remotes --no-merged #{MAINLINE}").split("\n").map(&:strip)
   end
 
   def merge_base
