@@ -8,6 +8,14 @@ to resolve that conflict.
 This is a script that checks branches that have happened since you branched,
 and tells you if any of them are in conflict with yours.
 
+## Installation
+
+Requires ruby.
+
+```bash
+gem install git-race
+```
+
 ## Usage
 
 Navigate to the repository that you're working in, checkout the branch you're
@@ -31,12 +39,4 @@ And you should get some output like...
 Danger! Merge race in progress
 * Conflict: HEAD with origin/ticket-840, last authored by Base Master Cylinder <mr@basemaster.co.nz>
 * Conflict: HEAD with origin/ticket-246, last authored by Flappy Mc Flapjack <flappy@lumberjacks.com>
-```
-
-## Installation
-
-Requires ruby.
-
-```bash
-gem install git-race
 ```
