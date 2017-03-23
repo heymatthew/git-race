@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = 'git-race'
-  s.version     = '0.0.1'
+  s.version     = '0.0.2'
   s.date        = '2017-03-23'
   s.summary     = "A merge race detector"
   s.description = "This is a script that checks branches that have happened since you branched, and tells you if any of them are in conflict with yours."
