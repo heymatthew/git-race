@@ -1,4 +1,4 @@
-# Git Racer: A merge race detector
+# Git Race: A merge race detector
 
 When you've got a lot of people working in a codebase, there is often more than
 one person working in the same area. When this happens, weather you like it or
@@ -35,4 +35,8 @@ Danger! Merge race in progress
 
 ## Installation
 
-TODO
+Requires ruby.
+
+```bash
+gem install git-race
+```
