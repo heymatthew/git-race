@@ -1,0 +1,79 @@
+#!/usr/bin/env ruby
+
+def query(cmd)
+  `#{cmd}`.chomp
+end
+
+def command(cmd)
+  # redirects stdout and stderr to /dev/null
+  system("#{cmd} > /dev/null 2>&1")
+end
+
+class Merge
+  attr_reader :branch, :diff, :author
+
+  def initialize(branch)
+    @branch = branch
+    @diff = conflicts_from(branch)
+    @author = query("git log -n1 --format='%an <%ae>' #{branch}")
+  end
+
+  def conflict?
+    @diff.size > 0
+  end
+
+  private
+
+  def conflicts_from(branch)
+    # you can't dry run a merge, so we have to apply and abort merges
+    command("git merge --no-ff --no-commit #{branch}")
+    query("git diff").tap do
+      command("git merge --abort")
+    end
+  end
+end
+
+MergeRacer = Struct.new(:branch) do
+  MAINLINE = "origin/HEAD" # defaultly origin/master
+
+  def call
+    if conflicts.none?
+      puts "Congratulations! Your branch doesn't conflict with anyone"
+    else
+      puts "Danger! Merge race in progress"
+      conflicts.each do |merge|
+        puts "* Conflict: #{branch} with #{merge.branch}, last authored by #{merge.author}"
+      end
+      puts "\n"
+    end
+  end
+
+  def abort
+    puts "Abort! Abort!"
+    command("git merge --abort")
+  end
+
+  private
+
+  def conflicts
+    @conflicts ||= merges.select(&:conflict?)
+  end
+
+  def merges
+    branches_from_merge_base
+      .reject { |b| b.match(MAINLINE) }
+      .map { |b| Merge.new(b) }
+  end
+
+  def branches_from_merge_base
+    query("git branch --remotes --contains #{merge_base}").split("\n").map(&:strip)
+  end
+
+  def merge_base
+    query("git merge-base #{MAINLINE} #{branch}")
+  end
+end
+
+service = MergeRacer.new("HEAD")
+# Signal.trap("TERM") { service.abort and exit }
+service.call
