@@ -37,6 +37,6 @@ And you should get some output like...
 
 ```
 Danger! Merge race in progress
-* Conflict: HEAD with origin/ticket-840, last authored by Base Master Cylinder <mr@basemaster.co.nz>
-* Conflict: HEAD with origin/ticket-246, last authored by Flappy Mc Flapjack <flappy@lumberjacks.com>
+* 4 files, 1315 line conflict with origin/admin_themes, last authored by Flappy Mc Flapjack <lumber@jack.co.nz>
+* 1 files, 21 line conflict with origin/electron_hack, last authored by Base Master Cylinder <mr@basemaster.co.nz>
 ```
