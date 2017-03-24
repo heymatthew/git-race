@@ -11,24 +11,72 @@ def command(cmd)
   system("#{cmd} > /dev/null 2>&1")
 end
 
-Merge = Struct.new(:branch, :days_till_stale) do
+MergeInformation = Struct.new(:branch) do
   def conflict?
-    diff.size > 0
+    conflict_diff.size > 0
   end
 
-  def stale?
-    last_touched < stale_cutoff_date
+  def description
+    "#{file_count} files, #{conflict_lines} line conflict with #{branch}, last authored by #{last_author}"
   end
 
-  def author
-    query("git log -n1 --format='%an <%ae>' #{branch}")
+  def <=>(their)
+    sort_fields <=> their.sort_fields
+  end
+
+  protected
+
+  def sort_fields
+    [file_count, conflict_lines]
   end
 
   private
 
-  def stale_cutoff_date
-    Date.today - days_till_stale
+  def file_count
+    diff_extract(/(\d+) file/).to_i
   end
+
+  def conflict_lines
+    insertion_count + deletion_count
+  end
+
+  def insertion_count
+    diff_extract(/(\d+) insertion/).to_i
+  end
+
+  def deletion_count
+    diff_extract(/(\d+) deletion/).to_i
+  end
+
+  def diff_extract(regex)
+    if match = conflict_diff.match(regex)
+      match[1]
+    else
+      nil
+    end
+  end
+
+  def conflict_diff
+    @conflict_diff ||= begin
+      # sadly we can't dry run a merge
+      command("git merge --no-ff --no-commit #{branch}")
+      query("git diff --shortstat").tap do
+        command("git merge --abort")
+      end
+    end
+  end
+
+  def last_author
+    query("git log -n1 --format='%an <%ae>' #{branch}")
+  end
+end
+
+BranchAgeChecker = Struct.new(:branch, :stale_cutoff_date) do
+  def stale?
+    last_touched < stale_cutoff_date
+  end
+
+  private
 
   def last_touched
     Date.parse(log_date)
@@ -36,14 +84,6 @@ Merge = Struct.new(:branch, :days_till_stale) do
 
   def log_date
     query("git log -1 --date=iso --format=%cd #{branch}")
-  end
-
-  def diff
-    # you can't dry run a merge, so we have to apply and abort merges
-    command("git merge --no-ff --no-commit #{branch}")
-    query("git diff").tap do
-      command("git merge --abort")
-    end
   end
 end
 
@@ -57,12 +97,12 @@ MergeRacer = Struct.new(:branch) do
       puts "Cowardly refusing to run, please commit your work or update .gitignore"
       puts "You can figure out what files to modify with\n"
       puts "  git status"
-    elsif recent_conflicts.none?
+    elsif merge_conflicts.none?
       puts "Congratulations! Your branch doesn't conflict with anyone"
     else
       puts "Danger! Merge race in progress"
-      recent_conflicts.each do |merge|
-        puts "* Conflict: #{branch} with #{merge.branch}, last authored by #{merge.author}"
+      merge_conflicts.each do |merge|
+        puts "* #{merge.description}"
       end
     end
 
@@ -80,23 +120,25 @@ MergeRacer = Struct.new(:branch) do
     query("git status --porcelain").length > 0
   end
 
-  def recent_conflicts
-    @recent_conflicts ||= merges.reject(&:stale?).select(&:conflict?)
+  def merge_conflicts
+    @merge_conflicts ||= recent_merges.select(&:conflict?)
   end
 
-  def merges
-    branches_from_merge_base.map { |branch| Merge.new(branch, STALE_THRESHOLD) }
+  def recent_merges
+    branches_from_merge_base
+      .reject { |branch| BranchAgeChecker.new(branch, stale_cutoff).stale? }
+      .map    { |branch| MergeInformation.new(branch) }
   end
 
   def branches_from_merge_base
     query("git branch --remotes --no-merged #{MAINLINE}").split("\n").map(&:strip)
   end
 
-  def merge_base
-    query("git merge-base #{MAINLINE} #{branch}")
+  def stale_cutoff
+    Date.today - STALE_THRESHOLD
   end
 end
 
 service = MergeRacer.new("HEAD")
-# Signal.trap("TERM") { service.abort and exit }
+Signal.trap("INT") { service.abort and exit }
 service.call
